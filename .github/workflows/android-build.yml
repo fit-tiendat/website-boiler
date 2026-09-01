@@ -1,12 +1,12 @@
-name: Build YHCT Android APK
+name: Build YHCT Android V6
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, v6-web-shell ]
   workflow_dispatch:
 
 concurrency:
-  group: yhct-android-main
+  group: yhct-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,12 +22,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Restore stable debug signing key
+      - name: Restore stable signing key
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: yhct-stable-debug-keystore-v1
-      - name: Create signing key on first baseline build
+      - name: Ensure stable signing key exists
         run: |
           mkdir -p ~/.android
           if [ ! -f ~/.android/debug.keystore ]; then
@@ -37,12 +37,12 @@ jobs:
         run: yes | sdkmanager --licenses >/dev/null || true
       - name: Install SDK
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - name: Build update-safe APK
+      - name: Build V6 update-safe APK
         run: gradle :app:assembleDebug --stacktrace
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk yhct-club-v5-update-safe.apk
+      - name: Package APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk yhct-social-v6-update-safe.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: yhct-club-v5-update-safe-apk
-          path: yhct-club-v5-update-safe.apk
+          name: yhct-social-v6-update-safe-apk
+          path: yhct-social-v6-update-safe.apk
           retention-days: 90

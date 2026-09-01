@@ -1,116 +1,167 @@
 package vn.yhct.club;
 
 import android.app.Activity;
-import android.app.AlertDialog;
+import android.app.DownloadManager;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.InputType;
-import android.view.Gravity;
+import android.os.Environment;
+import android.provider.Settings;
 import android.view.View;
-import android.widget.*;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.util.ArrayList;
-import java.util.List;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.widget.ProgressBar;
+import android.widget.Toast;
 
 public class MainActivity extends Activity {
-    private final int CREAM=Color.rgb(247,241,226), PAPER=Color.rgb(255,251,241), GREEN=Color.rgb(48,86,63), GREEN_DARK=Color.rgb(33,64,46), GOLD=Color.rgb(169,126,52), BROWN=Color.rgb(91,69,51), MUTED=Color.rgb(108,104,91), RED=Color.rgb(139,58,50), SOFT_GREEN=Color.rgb(231,239,230);
-    private CloudApi api;
-    private JSONObject me=new JSONObject();
-    private FrameLayout content;
-    private LinearLayout nav;
+    private static final String HOME = "https://web-vibe-code.vercel.app/yhct-social/";
+    private static final int FILE_CHOOSER = 2406;
+    private WebView web;
+    private ProgressBar progress;
+    private ValueCallback<Uri[]> fileCallback;
 
-    interface Work { Object run() throws Exception; }
-    interface Done { void ok(Object o); }
+    @Override public void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().setStatusBarColor(Color.rgb(21,61,43));
+        getWindow().setNavigationBarColor(Color.rgb(247,241,226));
 
-    @Override public void onCreate(Bundle b){ super.onCreate(b); api=new CloudApi(this); if(api.signedIn()) loadMeAndStart(); else showLogin(); }
+        FrameLayout root = new FrameLayout(this);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(-1, 6);
+        progress.setLayoutParams(pp);
+        root.addView(progress);
 
-    private GradientDrawable bg(int color,float radius){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(radius);return g;}
-    private TextView text(String s,int sp,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(sp);v.setTextColor(GREEN_DARK);v.setPadding(8,7,8,7);v.setTypeface(Typeface.SANS_SERIF,bold?Typeface.BOLD:Typeface.NORMAL);return v;}
-    private TextView serif(String s,int sp,boolean bold){TextView v=text(s,sp,bold);v.setTypeface(Typeface.SERIF,bold?Typeface.BOLD:Typeface.NORMAL);return v;}
-    private TextView small(String s){TextView v=text(s,13,false);v.setTextColor(MUTED);return v;}
-    private EditText input(String hint){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(true);e.setTextColor(GREEN_DARK);e.setHintTextColor(MUTED);e.setPadding(16,12,16,12);e.setBackground(bg(Color.rgb(251,248,239),18));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,5,0,5);e.setLayoutParams(p);return e;}
-    private EditText multi(String hint){EditText e=input(hint);e.setSingleLine(false);e.setMinLines(3);e.setGravity(Gravity.TOP);return e;}
-    private Space gap(int h){Space s=new Space(this);s.setLayoutParams(new LinearLayout.LayoutParams(1,h));return s;}
-    private LinearLayout card(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(18,16,18,16);GradientDrawable g=bg(PAPER,26);g.setStroke(1,Color.rgb(222,210,176));p.setBackground(g);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,6,0,10);p.setLayoutParams(lp);p.setElevation(3);return p;}
-    private TextView section(String s){TextView v=serif(s,19,true);v.setTextColor(BROWN);v.setPadding(4,16,4,7);return v;}
-    private Button button(String label,View.OnClickListener l){Button b=new Button(this);b.setText(label);b.setTextSize(15);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setTypeface(Typeface.SANS_SERIF,Typeface.BOLD);b.setPadding(16,12,16,12);b.setBackground(bg(GREEN,24));b.setOnClickListener(l);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,5,0,5);b.setLayoutParams(p);return b;}
-    private Button outline(String label,View.OnClickListener l){Button b=button(label,l);b.setTextColor(GREEN_DARK);GradientDrawable g=bg(PAPER,24);g.setStroke(2,GOLD);b.setBackground(g);return b;}
-    private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
-    private String s(JSONObject o,String k){return o==null?"":o.optString(k,"");}
-    private boolean staff(){String r=s(me,"role");return "MOD".equals(r)||"ADMIN".equals(r);}
-    private boolean admin(){return "ADMIN".equals(s(me,"role"));}
+        web = new WebView(this);
+        FrameLayout.LayoutParams wp = new FrameLayout.LayoutParams(-1,-1);
+        wp.topMargin = 6;
+        web.setLayoutParams(wp);
+        root.addView(web, 0);
+        setContentView(root);
 
-    private void async(String loading,Work w,Done d){
-        if(loading!=null&&!loading.isEmpty()) toast(loading);
-        new Thread(()->{try{Object x=w.run();runOnUiThread(()->d.ok(x));}catch(Exception e){runOnUiThread(()->{String m=e.getMessage();if(m!=null&&m.length()>160)m=m.substring(0,160)+"…";toast("Lỗi: "+m);});}}).start();
+        configureWebView();
+        if (state == null) web.loadUrl(HOME); else web.restoreState(state);
     }
 
-    private void showLogin(){
-        ScrollView sv=new ScrollView(this);sv.setBackgroundColor(CREAM);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(28,48,28,48);sv.addView(root);
-        LinearLayout hero=card();hero.setBackground(bg(GREEN_DARK,32));TextView mark=serif("☯  YHCT SOCIAL",19,true);mark.setGravity(Gravity.CENTER);mark.setTextColor(Color.rgb(236,211,151));hero.addView(mark);TextView title=serif("CÂU LẠC BỘ\nY HỌC CỔ TRUYỀN",28,true);title.setGravity(Gravity.CENTER);title.setTextColor(Color.WHITE);hero.addView(title);TextView sub=text("Kết nối hội viên • Chia sẻ tri thức • Phụng sự cộng đồng",14,false);sub.setTextColor(Color.rgb(238,231,211));sub.setGravity(Gravity.CENTER);hero.addView(sub);root.addView(hero);root.addView(gap(18));
-        LinearLayout p=card();p.addView(section("Đăng nhập Cloud"));EditText email=input("Email");email.setInputType(InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);EditText pass=input("Mật khẩu");pass.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);p.addView(email);p.addView(pass);p.addView(button("Đăng nhập",v->{String em=email.getText().toString().trim();String pw=pass.getText().toString();if(em.isEmpty()||pw.isEmpty()){toast("Nhập email và mật khẩu");return;}async("Đang đăng nhập…",()->api.login(em,pw),o->loadMeAndStart());}));p.addView(outline("Tạo tài khoản mới",v->showSignup()));root.addView(p);
-        LinearLayout note=card();note.addView(text("Tài khoản quản trị",16,true));note.addView(small("Email quản trị gốc được hệ thống nhận diện tự động là ADMIN khi đăng ký. Thành viên mới mặc định là MEMBER."));root.addView(note);setContentView(sv);
+    private void configureWebView() {
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setLoadsImagesAutomatically(true);
+        s.setMediaPlaybackRequiresUserGesture(true);
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setAllowFileAccess(true);
+        s.setAllowContentAccess(true);
+        s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
+        s.setUserAgentString(s.getUserAgentString() + " YHCTAndroid/6.0");
+        if (android.os.Build.VERSION.SDK_INT >= 26) s.setSafeBrowsingEnabled(true);
+        web.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
+
+        web.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
+                Uri u = req.getUrl();
+                String scheme = u.getScheme() == null ? "" : u.getScheme();
+                if ("http".equals(scheme) || "https".equals(scheme)) {
+                    String host = u.getHost() == null ? "" : u.getHost();
+                    if (host.endsWith("vercel.app") || host.endsWith("supabase.co")) return false;
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
+                    return true;
+                }
+                if ("mailto".equals(scheme) || "tel".equals(scheme)) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
+                    return true;
+                }
+                return false;
+            }
+            @Override public void onPageFinished(WebView view, String url) {
+                progress.setVisibility(View.GONE);
+            }
+            @Override public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError error) {
+                if (req.isForMainFrame()) Toast.makeText(MainActivity.this, "Mất kết nối. Ứng dụng sẽ dùng dữ liệu đệm nếu có.", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override public void onProgressChanged(WebView view, int newProgress) {
+                progress.setVisibility(newProgress >= 100 ? View.GONE : View.VISIBLE);
+                progress.setProgress(newProgress);
+            }
+            @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                String[] types = params == null ? null : params.getAcceptTypes();
+                if (types != null && types.length > 0 && !(types.length == 1 && (types[0] == null || types[0].isEmpty()))) i.putExtra(Intent.EXTRA_MIME_TYPES, types);
+                try { startActivityForResult(i, FILE_CHOOSER); }
+                catch (Exception e) { fileCallback.onReceiveValue(null); fileCallback = null; return false; }
+                return true;
+            }
+        });
+
+        web.setDownloadListener(new DownloadListener() {
+            @Override public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long length) {
+                try {
+                    DownloadManager.Request r = new DownloadManager.Request(Uri.parse(url));
+                    r.setMimeType(mimetype);
+                    r.addRequestHeader("User-Agent", userAgent);
+                    r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    r.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "YHCT-" + System.currentTimeMillis());
+                    ((DownloadManager)getSystemService(Context.DOWNLOAD_SERVICE)).enqueue(r);
+                    Toast.makeText(MainActivity.this, "Đang tải tệp…", Toast.LENGTH_SHORT).show();
+                } catch (Exception e) {
+                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
+                }
+            }
+        });
     }
 
-    private void showSignup(){
-        ScrollView sv=new ScrollView(this);sv.setBackgroundColor(CREAM);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(28,42,28,42);sv.addView(root);LinearLayout p=card();p.addView(section("Tạo tài khoản hội viên"));EditText name=input("Họ và tên");EditText email=input("Email");EditText pass=input("Mật khẩu (ít nhất 8 ký tự)");pass.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);p.addView(name);p.addView(email);p.addView(pass);p.addView(button("Đăng ký",v->{if(name.getText().toString().trim().isEmpty()||email.getText().toString().trim().isEmpty()||pass.getText().length()<8){toast("Kiểm tra họ tên, email và mật khẩu");return;}async("Đang tạo tài khoản…",()->api.signUp(email.getText().toString().trim(),pass.getText().toString(),name.getText().toString().trim()),o->{if(api.signedIn())loadMeAndStart();else{toast("Đã đăng ký. Kiểm tra email nếu hệ thống yêu cầu xác nhận.");showLogin();}});}));p.addView(outline("← Đăng nhập",v->showLogin()));root.addView(p);setContentView(sv);
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == FILE_CHOOSER && fileCallback != null) {
+            Uri[] result = null;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) result = new Uri[]{data.getData()};
+            fileCallback.onReceiveValue(result);
+            fileCallback = null;
+        }
     }
 
-    private void loadMeAndStart(){async("",()->api.profile(),o->{me=(JSONObject)o;showShell("feed");});}
-
-    private void showShell(String tab){
-        LinearLayout shell=new LinearLayout(this);shell.setOrientation(LinearLayout.VERTICAL);shell.setBackgroundColor(CREAM);content=new FrameLayout(this);shell.addView(content,new LinearLayout.LayoutParams(-1,0,1));nav=new LinearLayout(this);nav.setOrientation(LinearLayout.HORIZONTAL);nav.setPadding(4,4,4,6);nav.setBackgroundColor(PAPER);nav.setElevation(12);shell.addView(nav,new LinearLayout.LayoutParams(-1,-2));
-        addNav("⌂\nBảng tin","feed");addNav("◎\nNhóm","groups");addNav("◈\nSự kiện","events");addNav("✉\nChat","chat");addNav("●\nTôi","profile");setContentView(shell);switchTab(tab);
+    @Override protected void onSaveInstanceState(Bundle out) {
+        web.saveState(out);
+        super.onSaveInstanceState(out);
     }
-    private void addNav(String label,String tab){TextView b=text(label,12,true);b.setGravity(Gravity.CENTER);b.setPadding(4,8,4,8);b.setOnClickListener(v->switchTab(tab));nav.addView(b,new LinearLayout.LayoutParams(0,-2,1));}
-    private void switchTab(String tab){View v;if("groups".equals(tab))v=groupsView();else if("events".equals(tab))v=eventsView();else if("chat".equals(tab))v=chatView();else if("profile".equals(tab))v=profileView();else v=feedView();v.setAlpha(0f);v.setTranslationX(32f);content.removeAllViews();content.addView(v);v.animate().alpha(1f).translationX(0f).setDuration(220).start();}
 
-    private LinearLayout page(String title,String subtitle){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(18,14,18,30);LinearLayout hero=card();hero.setBackground(bg(GREEN_DARK,28));TextView h=serif(title,23,true);h.setTextColor(Color.WHITE);hero.addView(h);TextView sub=text(subtitle,13,false);sub.setTextColor(Color.rgb(238,228,199));hero.addView(sub);root.addView(hero);return root;}
-    private ScrollView scrollPage(LinearLayout root){ScrollView sv=new ScrollView(this);sv.setFillViewport(true);sv.addView(root);return sv;}
+    @Override public void onBackPressed() {
+        if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
+    }
 
-    private View feedView(){LinearLayout root=page("BẢNG TIN HỘI VIÊN","Tri thức • Hoạt động • Thông báo • Tương tác");root.addView(button("＋ Chia sẻ bài viết",v->composePost()));LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);root.addView(box);box.addView(small("Đang tải bảng tin…"));async("",()->api.feed(),o->renderFeed(box,(JSONArray)o));return scrollPage(root);}
-    private void renderFeed(LinearLayout box,JSONArray arr){box.removeAllViews();if(arr.length()==0){LinearLayout p=card();p.addView(text("Chưa có bài viết",17,true));p.addView(small("Hãy là người đầu tiên chia sẻ kiến thức hoặc hoạt động của CLB."));box.addView(p);return;}for(int i=0;i<arr.length();i++){JSONObject post=arr.optJSONObject(i);LinearLayout p=card();JSONObject author=post.optJSONObject("profiles");TextView who=text((author==null?"Hội viên":author.optString("display_name","Hội viên"))+"  •  "+post.optString("kind","POST"),15,true);who.setTextColor(GREEN);p.addView(who);p.addView(small(author==null?"":author.optString("position","")+"  •  "+prettyTime(post.optString("created_at",""))));p.addView(text(post.optString("content",""),16,false));LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);Button like=outline("♥ "+post.optInt("reaction_count",0),v->async("",()->{api.react(post.optString("id"),"HEART");return null;},x->switchTab("feed")));Button comment=outline("💬 "+post.optInt("comment_count",0),v->commentsDialog(post));actions.addView(like,new LinearLayout.LayoutParams(0,-2,1));actions.addView(comment,new LinearLayout.LayoutParams(0,-2,1));p.addView(actions);if(api.userId().equals(post.optString("author_id"))||staff())p.addView(outline("⋯ Quản lý bài viết",v->postMenu(post)));box.addView(p);}}
-    private void composePost(){LinearLayout p=new LinearLayout(this);p.setPadding(20,4,20,4);p.setOrientation(LinearLayout.VERTICAL);EditText body=multi("Chia sẻ kiến thức, cảm nhận hoặc hoạt động…");Spinner kind=new Spinner(this);kind.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"POST","KNOWLEDGE","ACTIVITY","ANNOUNCEMENT"}));p.addView(body);p.addView(kind);new AlertDialog.Builder(this).setTitle("Bài viết mới").setView(p).setNegativeButton("Hủy",null).setPositiveButton("Đăng",(d,w)->{String b=body.getText().toString().trim();if(b.isEmpty()){toast("Nội dung đang trống");return;}async("Đang đăng…",()->{api.createPost(b,String.valueOf(kind.getSelectedItem()));return null;},o->switchTab("feed"));}).show();}
-    private void commentsDialog(JSONObject post){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(18,6,18,6);ScrollView sv=new ScrollView(this);LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);sv.addView(list);p.addView(sv,new LinearLayout.LayoutParams(-1,500));EditText msg=input("Viết bình luận…");p.addView(msg);AlertDialog dlg=new AlertDialog.Builder(this).setTitle("Bình luận").setView(p).setNegativeButton("Đóng",null).setPositiveButton("Gửi",null).create();dlg.setOnShowListener(x->{dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{String c=msg.getText().toString().trim();if(c.isEmpty())return;async("",()->{api.addComment(post.optString("id"),c);return api.comments(post.optString("id"));},o->{msg.setText("");renderComments(list,(JSONArray)o);});});async("",()->api.comments(post.optString("id")),o->renderComments(list,(JSONArray)o));});dlg.show();}
-    private void renderComments(LinearLayout list,JSONArray a){list.removeAllViews();for(int i=0;i<a.length();i++){JSONObject c=a.optJSONObject(i);JSONObject u=c.optJSONObject("profiles");LinearLayout p=card();p.addView(text((u==null?"Hội viên":u.optString("display_name","Hội viên")),14,true));p.addView(text(c.optString("content",""),14,false));p.addView(small(prettyTime(c.optString("created_at",""))));list.addView(p);}if(a.length()==0)list.addView(small("Chưa có bình luận."));}
-    private void postMenu(JSONObject post){new AlertDialog.Builder(this).setTitle("Quản lý bài viết").setItems(new String[]{"Xóa bài viết","Hủy"},(d,w)->{if(w==0)async("Đang xóa…",()->{api.deletePost(post.optString("id"));return null;},o->switchTab("feed"));}).show();}
+    @Override protected void onResume() {
+        super.onResume();
+        if (web != null) web.onResume();
+    }
 
-    private View groupsView(){LinearLayout root=page("NHÓM & BAN CHUYÊN MÔN","Kết nối theo chuyên môn và hoạt động");root.addView(button("＋ Tạo nhóm",v->createGroupDialog()));LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);root.addView(box);box.addView(small("Đang tải nhóm…"));async("",()->api.groups(),o->renderGroups(box,(JSONArray)o));return scrollPage(root);}
-    private void renderGroups(LinearLayout box,JSONArray a){box.removeAllViews();for(int i=0;i<a.length();i++){JSONObject g=a.optJSONObject(i);LinearLayout p=card();p.addView(serif(g.optString("name","Nhóm"),19,true));p.addView(text(g.optString("description",""),14,false));p.addView(small(g.optBoolean("is_private",false)?"Nhóm riêng tư":"Nhóm mở"));p.addView(outline("Tham gia nhóm",v->async("",()->{api.joinGroup(g.optString("id"));return null;},o->toast("Đã tham gia nhóm"))));box.addView(p);}if(a.length()==0)box.addView(small("Chưa có nhóm."));}
-    private void createGroupDialog(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText name=input("Tên nhóm / ban");EditText desc=multi("Mô tả");CheckBox priv=new CheckBox(this);priv.setText("Nhóm riêng tư");p.addView(name);p.addView(desc);p.addView(priv);new AlertDialog.Builder(this).setTitle("Tạo nhóm").setView(p).setNegativeButton("Hủy",null).setPositiveButton("Tạo",(d,w)->async("",()->{api.createGroup(name.getText().toString().trim(),desc.getText().toString().trim(),priv.isChecked());return null;},o->switchTab("groups"))).show();}
+    @Override protected void onPause() {
+        if (web != null) web.onPause();
+        super.onPause();
+    }
 
-    private View eventsView(){LinearLayout root=page("SỰ KIỆN CLB","Đăng ký • Điểm hoạt động • Check-in");if(staff())root.addView(button("＋ Tạo sự kiện",v->createEventDialog()));LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);root.addView(box);box.addView(small("Đang tải sự kiện…"));async("",()->api.events(),o->renderEvents(box,(JSONArray)o));return scrollPage(root);}
-    private void renderEvents(LinearLayout box,JSONArray a){box.removeAllViews();for(int i=0;i<a.length();i++){JSONObject e=a.optJSONObject(i);LinearLayout p=card();TextView date=text(prettyTime(e.optString("starts_at","")),13,true);date.setTextColor(GOLD);p.addView(date);p.addView(serif(e.optString("title","Sự kiện"),19,true));p.addView(text(e.optString("description",""),14,false));p.addView(small("📍 "+e.optString("location","Chưa cập nhật")+"  •  +"+e.optInt("points",0)+" điểm"));p.addView(button("Đăng ký tham gia",v->async("",()->{api.attendEvent(e.optString("id"));return null;},o->toast("Đã đăng ký sự kiện"))));box.addView(p);}if(a.length()==0)box.addView(small("Chưa có sự kiện."));}
-    private void createEventDialog(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText title=input("Tên sự kiện");EditText desc=multi("Mô tả");EditText location=input("Địa điểm");EditText starts=input("Thời gian ISO, ví dụ 2026-09-15T08:00:00+07:00");EditText pts=input("Điểm hoạt động");pts.setInputType(InputType.TYPE_CLASS_NUMBER);p.addView(title);p.addView(desc);p.addView(location);p.addView(starts);p.addView(pts);new AlertDialog.Builder(this).setTitle("Tạo sự kiện").setView(p).setNegativeButton("Hủy",null).setPositiveButton("Tạo",(d,w)->async("",()->{api.createEvent(title.getText().toString().trim(),desc.getText().toString().trim(),location.getText().toString().trim(),starts.getText().toString().trim(),parseInt(pts.getText().toString()));return null;},o->switchTab("events"))).show();}
-
-    private View chatView(){LinearLayout root=page("TIN NHẮN","Trao đổi 1–1 giữa các hội viên");root.addView(button("＋ Tin nhắn mới",v->chooseMemberForChat()));LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);root.addView(box);box.addView(small("Đang tải hội thoại…"));async("",()->api.conversations(),o->renderConversations(box,(JSONArray)o));return scrollPage(root);}
-    private void renderConversations(LinearLayout box,JSONArray a){box.removeAllViews();for(int i=0;i<a.length();i++){JSONObject row=a.optJSONObject(i);JSONObject c=row.optJSONObject("conversations");if(c==null)continue;LinearLayout p=card();p.addView(text(c.optString("title","Cuộc trò chuyện"),17,true));p.addView(small(prettyTime(c.optString("created_at",""))));p.setOnClickListener(v->chatRoom(c.optString("id"),c.optString("title","Tin nhắn")));box.addView(p);}if(a.length()==0)box.addView(small("Chưa có cuộc trò chuyện."));}
-    private void chooseMemberForChat(){async("",()->api.profiles(""),o->{JSONArray a=(JSONArray)o;List<String> names=new ArrayList<>();List<String> ids=new ArrayList<>();for(int i=0;i<a.length();i++){JSONObject u=a.optJSONObject(i);if(api.userId().equals(u.optString("id")))continue;names.add(u.optString("display_name","Hội viên"));ids.add(u.optString("id"));}new AlertDialog.Builder(this).setTitle("Chọn hội viên").setItems(names.toArray(new String[0]),(d,w)->async("",()->api.createConversation(ids.get(w),names.get(w)),x->chatRoom(String.valueOf(x),names.get(w)))).show();});}
-    private void chatRoom(String id,String title){LinearLayout root=page(title,"Tin nhắn hội viên");LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);ScrollView sv=new ScrollView(this);sv.addView(list);root.addView(sv,new LinearLayout.LayoutParams(-1,0,1));LinearLayout composer=new LinearLayout(this);composer.setOrientation(LinearLayout.HORIZONTAL);EditText msg=input("Nhập tin nhắn…");Button send=button("Gửi",v->{String m=msg.getText().toString().trim();if(m.isEmpty())return;async("",()->{api.sendMessage(id,m);return api.messages(id);},o->{msg.setText("");renderMessages(list,(JSONArray)o);});});composer.addView(msg,new LinearLayout.LayoutParams(0,-2,1));composer.addView(send,new LinearLayout.LayoutParams(-2,-2));root.addView(composer);content.removeAllViews();content.addView(root);async("",()->api.messages(id),o->renderMessages(list,(JSONArray)o));}
-    private void renderMessages(LinearLayout list,JSONArray a){list.removeAllViews();for(int i=0;i<a.length();i++){JSONObject m=a.optJSONObject(i);JSONObject u=m.optJSONObject("profiles");boolean mine=api.userId().equals(m.optString("sender_id"));LinearLayout wrap=new LinearLayout(this);wrap.setGravity(mine?Gravity.RIGHT:Gravity.LEFT);TextView bubble=text((u==null?"":u.optString("display_name","")+"\n")+m.optString("body",""),14,false);bubble.setBackground(bg(mine?SOFT_GREEN:PAPER,20));bubble.setPadding(16,11,16,11);wrap.addView(bubble,new LinearLayout.LayoutParams(-2,-2));list.addView(wrap);list.addView(small(prettyTime(m.optString("created_at",""))));}}
-
-    private View profileView(){LinearLayout root=page("HỒ SƠ CÁ NHÂN","Danh tính • Thành tích • Cài đặt");LinearLayout meCard=card();meCard.addView(serif(s(me,"display_name"),23,true));TextView role=text(s(me,"role")+"  •  "+s(me,"member_code"),14,true);role.setTextColor(GOLD);meCard.addView(role);meCard.addView(text(s(me,"bio"),14,false));meCard.addView(small("Chức danh: "+s(me,"position")+"\nBan: "+s(me,"department")+"\nTổng điểm: "+me.optInt("total_points",0)));root.addView(meCard);root.addView(button("✎ Chỉnh sửa hồ sơ",v->editProfile()));root.addView(outline("🔔 Thông báo",v->notificationsDialog()));root.addView(outline("🔎 Tìm hội viên",v->memberDirectory()));root.addView(outline("↻ Kiểm tra cập nhật",v->checkUpdate(true)));if(staff())root.addView(button("⚙ Công cụ MOD / ADMIN",v->staffTools()));root.addView(outline("Đăng xuất",v->{api.signOut();me=new JSONObject();showLogin();}));return scrollPage(root);}
-    private void editProfile(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText name=input("Họ tên");name.setText(s(me,"display_name"));EditText bio=multi("Giới thiệu");bio.setText(s(me,"bio"));EditText pos=input("Chức danh");pos.setText(s(me,"position"));EditText dep=input("Ban / bộ phận");dep.setText(s(me,"department"));EditText phone=input("Điện thoại");phone.setText(s(me,"phone"));p.addView(name);p.addView(bio);p.addView(pos);p.addView(dep);p.addView(phone);new AlertDialog.Builder(this).setTitle("Chỉnh sửa hồ sơ").setView(p).setNegativeButton("Hủy",null).setPositiveButton("Lưu",(d,w)->async("",()->{JSONObject x=new JSONObject();x.put("display_name",name.getText().toString().trim());x.put("bio",bio.getText().toString().trim());x.put("position",pos.getText().toString().trim());x.put("department",dep.getText().toString().trim());x.put("phone",phone.getText().toString().trim());api.updateProfile(x);return api.profile();},o->{me=(JSONObject)o;switchTab("profile");})).show();}
-    private void memberDirectory(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText q=input("Tìm theo tên");LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);ScrollView sv=new ScrollView(this);sv.addView(list);p.addView(q);p.addView(button("Tìm",v->async("",()->api.profiles(q.getText().toString()),o->renderDirectory(list,(JSONArray)o))));p.addView(sv,new LinearLayout.LayoutParams(-1,600));AlertDialog dlg=new AlertDialog.Builder(this).setTitle("Danh bạ hội viên").setView(p).setNegativeButton("Đóng",null).create();dlg.show();async("",()->api.profiles(""),o->renderDirectory(list,(JSONArray)o));}
-    private void renderDirectory(LinearLayout list,JSONArray a){list.removeAllViews();for(int i=0;i<a.length();i++){JSONObject u=a.optJSONObject(i);LinearLayout p=card();p.addView(text(u.optString("display_name","Hội viên"),16,true));p.addView(small(u.optString("position","")+" • "+u.optString("department","")+" • "+u.optString("role","MEMBER")+"\nĐiểm: "+u.optInt("total_points",0)));if(!api.userId().equals(u.optString("id")))p.addView(outline("Theo dõi",v->async("",()->{api.follow(u.optString("id"));return null;},o->toast("Đã theo dõi"))));list.addView(p);}}
-    private void notificationsDialog(){LinearLayout list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);ScrollView sv=new ScrollView(this);sv.addView(list);AlertDialog dlg=new AlertDialog.Builder(this).setTitle("Thông báo").setView(sv).setNegativeButton("Đóng",null).create();dlg.show();async("",()->api.notifications(),o->{JSONArray a=(JSONArray)o;list.removeAllViews();for(int i=0;i<a.length();i++){JSONObject n=a.optJSONObject(i);LinearLayout p=card();p.addView(text((n.optBoolean("is_read",false)?"":"● ")+n.optString("title","Thông báo"),15,true));p.addView(text(n.optString("body",""),13,false));p.addView(small(prettyTime(n.optString("created_at",""))));p.setOnClickListener(v->async("",()->{api.markNotificationRead(n.optString("id"));return null;},x->toast("Đã đánh dấu đã đọc")));list.addView(p);}if(a.length()==0)list.addView(small("Không có thông báo mới."));});}
-
-    private void staffTools(){String[] items=admin()?new String[]{"Chấm điểm hội viên","Trao khen thưởng","Phân quyền MEMBER/MOD/ADMIN"}:new String[]{"Chấm điểm hội viên","Trao khen thưởng"};new AlertDialog.Builder(this).setTitle("Công cụ quản trị").setItems(items,(d,w)->{if(w==0)awardPointsDialog();else if(w==1)rewardDialog();else roleDialog();}).show();}
-    private void awardPointsDialog(){async("",()->api.profiles(""),o->{JSONArray a=(JSONArray)o;chooseProfile(a,"Chọn hội viên",u->{LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText pts=input("Số điểm");pts.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED);EditText reason=input("Lý do");p.addView(pts);p.addView(reason);new AlertDialog.Builder(this).setTitle("Chấm điểm: "+u.optString("display_name")).setView(p).setNegativeButton("Hủy",null).setPositiveButton("Ghi nhận",(d,w)->async("",()->{api.awardPoints(u.optString("id"),null,parseInt(pts.getText().toString()),reason.getText().toString());return null;},x->toast("Đã ghi nhận điểm"))).show();});});}
-    private void rewardDialog(){async("",()->api.profiles(""),o->{JSONArray a=(JSONArray)o;chooseProfile(a,"Chọn hội viên",u->{LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);EditText title=input("Tên khen thưởng");EditText desc=multi("Mô tả");p.addView(title);p.addView(desc);new AlertDialog.Builder(this).setTitle("Khen thưởng: "+u.optString("display_name")).setView(p).setNegativeButton("Hủy",null).setPositiveButton("Trao",(d,w)->async("",()->{api.awardReward(u.optString("id"),title.getText().toString(),desc.getText().toString());return null;},x->toast("Đã trao khen thưởng"))).show();});});}
-    interface ProfilePick{void pick(JSONObject u);}
-    private void chooseProfile(JSONArray a,String title,ProfilePick cb){List<String> names=new ArrayList<>();List<JSONObject> users=new ArrayList<>();for(int i=0;i<a.length();i++){JSONObject u=a.optJSONObject(i);names.add(u.optString("display_name","Hội viên")+" • "+u.optString("member_code",""));users.add(u);}new AlertDialog.Builder(this).setTitle(title).setItems(names.toArray(new String[0]),(d,w)->cb.pick(users.get(w))).show();}
-    private void roleDialog(){async("",()->api.profiles(""),o->{JSONArray a=(JSONArray)o;chooseProfile(a,"Chọn tài khoản",u->new AlertDialog.Builder(this).setTitle("Phân quyền: "+u.optString("display_name")).setItems(new String[]{"MEMBER","MOD","ADMIN"},(d,w)->async("",()->{api.updateProfileById(u.optString("id"),new JSONObject().put("role",new String[]{"MEMBER","MOD","ADMIN"}[w]));return null;},x->toast("Đã cập nhật quyền"))).show());});}
-
-    private void checkUpdate(boolean announce){async(announce?"Đang kiểm tra cập nhật…":"",()->api.releases(),o->{JSONArray a=(JSONArray)o;if(a.length()==0){if(announce)toast("Bạn đang dùng bản mới nhất");return;}JSONObject r=a.optJSONObject(0);int vc=r.optInt("version_code",0);if(vc<=4){if(announce)toast("Bạn đang dùng bản mới nhất");return;}String url=r.optString("apk_url","");new AlertDialog.Builder(this).setTitle("Có phiên bản "+r.optString("version_name","mới")).setMessage(r.optString("notes","Có bản cập nhật mới.")).setNegativeButton("Để sau",null).setPositiveButton("Cập nhật",(d,w)->{if(!url.isEmpty())startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}).show();});}
-
-    private int parseInt(String x){try{return Integer.parseInt(x.trim());}catch(Exception e){return 0;}}
-    private String prettyTime(String x){if(x==null||x.isEmpty())return "";String y=x.replace('T',' ');int dot=y.indexOf('.');if(dot>0)y=y.substring(0,dot);if(y.length()>16)y=y.substring(0,16);return y;}
+    @Override protected void onDestroy() {
+        if (web != null) { web.stopLoading(); web.destroy(); }
+        super.onDestroy();
+    }
 }
