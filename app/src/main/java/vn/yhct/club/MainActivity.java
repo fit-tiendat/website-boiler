@@ -1,268 +1,92 @@
 package vn.yhct.club;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 
+import org.json.JSONObject;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
 public class MainActivity extends Activity {
+    private static final int REQ_BACKUP_EXPORT=1001, REQ_BACKUP_IMPORT=1002, REQ_MEMBER_CSV=1003;
     private LinearLayout root;
-    private String role = "MEMBER";
+    private ClubDb db;
+    private ClubDb.User user;
 
-    private final int CREAM = Color.rgb(247,241,226);
-    private final int PAPER = Color.rgb(255,251,241);
-    private final int GREEN = Color.rgb(48,86,63);
-    private final int GREEN_DARK = Color.rgb(33,64,46);
-    private final int GOLD = Color.rgb(169,126,52);
-    private final int BROWN = Color.rgb(91,69,51);
-    private final int MUTED = Color.rgb(108,104,91);
+    private final int CREAM=Color.rgb(247,241,226), PAPER=Color.rgb(255,251,241), GREEN=Color.rgb(48,86,63), GREEN_DARK=Color.rgb(33,64,46), GOLD=Color.rgb(169,126,52), BROWN=Color.rgb(91,69,51), MUTED=Color.rgb(108,104,91), RED=Color.rgb(139,58,50);
 
-    @Override public void onCreate(Bundle b) {
-        super.onCreate(b);
-        showHome();
+    @Override public void onCreate(Bundle b){ super.onCreate(b); db=new ClubDb(this); showLogin(); }
+
+    private GradientDrawable bg(int color,float radius){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(radius);return g;}
+    private TextView text(String s,int sp,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextSize(sp);v.setTextColor(GREEN_DARK);v.setPadding(8,8,8,8);v.setTypeface(Typeface.SERIF,bold?Typeface.BOLD:Typeface.NORMAL);return v;}
+    private TextView small(String s){TextView v=text(s,13,false);v.setTextColor(MUTED);return v;}
+    private Space gap(int h){Space s=new Space(this);s.setLayoutParams(new LinearLayout.LayoutParams(1,h));return s;}
+    private Button btn(String label,View.OnClickListener l){Button b=new Button(this);b.setText(label);b.setTextSize(16);b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setTypeface(Typeface.SERIF,Typeface.BOLD);b.setPadding(18,14,18,14);b.setBackground(bg(GREEN,28));b.setOnClickListener(l);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,7,0,7);b.setLayoutParams(p);return b;}
+    private Button outlineBtn(String label,View.OnClickListener l){Button b=new Button(this);b.setText(label);b.setTextSize(15);b.setTextColor(GREEN_DARK);b.setAllCaps(false);GradientDrawable g=bg(PAPER,28);g.setStroke(2,GOLD);b.setBackground(g);b.setOnClickListener(l);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,6,0,6);b.setLayoutParams(p);return b;}
+    private Button dangerBtn(String label,View.OnClickListener l){Button b=outlineBtn(label,l);b.setTextColor(RED);GradientDrawable g=bg(PAPER,28);g.setStroke(2,RED);b.setBackground(g);return b;}
+    private LinearLayout panel(){LinearLayout p=new LinearLayout(this);p.setOrientation(LinearLayout.VERTICAL);p.setPadding(18,16,18,16);GradientDrawable g=bg(PAPER,26);g.setStroke(1,Color.rgb(220,207,173));p.setBackground(g);LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,6,0,8);p.setLayoutParams(lp);return p;}
+    private TextView section(String s){TextView v=text(s,19,true);v.setTextColor(BROWN);v.setPadding(4,14,4,7);return v;}
+    private EditText input(String hint){EditText e=new EditText(this);e.setHint(hint);e.setTextColor(GREEN_DARK);e.setHintTextColor(MUTED);e.setSingleLine(true);e.setPadding(14,12,14,12);e.setBackground(bg(Color.rgb(250,247,237),18));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,5,0,5);e.setLayoutParams(lp);return e;}
+
+    private void base(String title,String subtitle){ScrollView sv=new ScrollView(this);sv.setBackgroundColor(CREAM);root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,22,24,46);sv.addView(root);LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(22,20,22,20);GradientDrawable heroBg=bg(GREEN_DARK,34);heroBg.setStroke(2,GOLD);hero.setBackground(heroBg);TextView crest=new TextView(this);crest.setText("☯  藥  YHCT");crest.setTextColor(Color.rgb(235,214,163));crest.setTextSize(17);crest.setGravity(Gravity.CENTER_HORIZONTAL);crest.setTypeface(Typeface.SERIF,Typeface.BOLD);hero.addView(crest);TextView h=new TextView(this);h.setText(title);h.setTextColor(Color.WHITE);h.setTextSize(25);h.setGravity(Gravity.CENTER_HORIZONTAL);h.setTypeface(Typeface.SERIF,Typeface.BOLD);h.setPadding(0,8,0,2);hero.addView(h);TextView sub=new TextView(this);sub.setText(subtitle);sub.setTextColor(Color.rgb(236,226,198));sub.setTextSize(14);sub.setGravity(Gravity.CENTER_HORIZONTAL);sub.setTypeface(Typeface.SERIF,Typeface.NORMAL);hero.addView(sub);root.addView(hero);root.addView(gap(16));setContentView(sv);}
+
+    private void showLogin(){
+        base("CLB Y HỌC CỔ TRUYỀN","Đăng nhập hệ thống quản lý hội viên");
+        LinearLayout p=panel();p.addView(text("ĐĂNG NHẬP",22,true));p.addView(small("Tài khoản mặc định lần đầu: admin / Yhct@2026"));EditText u=input("Tên đăng nhập");EditText pw=input("Mật khẩu");pw.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);p.addView(u);p.addView(pw);TextView msg=small("");p.addView(btn("Đăng nhập",v->{ClubDb.User x=db.authenticate(u.getText().toString(),pw.getText().toString());if(x==null){msg.setText("Sai tài khoản/mật khẩu hoặc tài khoản đã khóa.");msg.setTextColor(RED);}else{user=x;showHome();}}));p.addView(msg);root.addView(p);
+        LinearLayout note=panel();note.addView(text("Tài khoản khởi tạo",17,true));note.addView(small("ADMIN: admin / Yhct@2026\nMOD: mod / Mod@2026\nMEMBER: member / Member@2026\n\nHãy đổi mật khẩu sau khi đăng nhập."));root.addView(note);
     }
 
-    private GradientDrawable bg(int color, float radius) {
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(color);
-        g.setCornerRadius(radius);
-        return g;
+    private boolean isAdmin(){return user!=null&&"ADMIN".equals(user.role);} private boolean isMod(){return user!=null&&("MOD".equals(user.role)||isAdmin());}
+    private void showHome(){
+        if(user==null){showLogin();return;} base("CLB Y HỌC CỔ TRUYỀN","Gìn giữ tinh hoa • Kết nối hội viên • Phụng sự cộng đồng");
+        LinearLayout me=panel();me.addView(text("Xin chào, "+user.displayName,19,true));me.addView(small("Tài khoản: "+user.username+" • Vai trò: "+user.role));root.addView(me);
+        root.addView(section("Tổng quan"));LinearLayout stats=new LinearLayout(this);stats.setOrientation(LinearLayout.HORIZONTAL);stats.addView(stat(String.valueOf(db.count("members")),"Hội viên"),new LinearLayout.LayoutParams(0,-2,1));stats.addView(stat(String.valueOf(db.count("activities")),"Hoạt động"),new LinearLayout.LayoutParams(0,-2,1));stats.addView(stat(String.valueOf(db.count("rewards")),"Khen thưởng"),new LinearLayout.LayoutParams(0,-2,1));root.addView(stats);
+        root.addView(section("Danh mục"));root.addView(btn("👤  Hội viên",v->members()));root.addView(btn("🌿  Hoạt động",v->activities()));root.addView(btn("🏅  Điểm & khen thưởng",v->points()));root.addView(btn("📜  Tin tức",v->news()));if(isMod())root.addView(btn("⚙  Quản trị",v->admin()));root.addView(outlineBtn("🔐 Đổi mật khẩu",v->changePassword()));root.addView(dangerBtn("Đăng xuất",v->{db.log(user.username,"LOGOUT","Đăng xuất");user=null;showLogin();}));
     }
+    private LinearLayout stat(String value,String label){LinearLayout p=panel();TextView a=text(value,24,true);a.setTextColor(GREEN_DARK);a.setGravity(Gravity.CENTER_HORIZONTAL);TextView b=small(label);b.setGravity(Gravity.CENTER_HORIZONTAL);p.addView(a);p.addView(b);return p;}
 
-    private TextView text(String s, int sp, boolean bold) {
-        TextView v = new TextView(this);
-        v.setText(s);
-        v.setTextSize(sp);
-        v.setTextColor(GREEN_DARK);
-        v.setPadding(8,8,8,8);
-        v.setTypeface(Typeface.SERIF, bold ? Typeface.BOLD : Typeface.NORMAL);
-        return v;
-    }
+    private void members(){base("HỘI VIÊN","Tra cứu và quản lý hồ sơ");EditText q=input("Mã hội viên hoặc họ tên");root.addView(q);LinearLayout results=new LinearLayout(this);results.setOrientation(LinearLayout.VERTICAL);root.addView(btn("Tra cứu",v->renderMembers(results,q.getText().toString())));if(isMod())root.addView(outlineBtn("+ Thêm hội viên",v->memberForm(null)));root.addView(results);renderMembers(results,"");root.addView(outlineBtn("← Trang chủ",v->showHome()));}
+    private void renderMembers(LinearLayout box,String q){box.removeAllViews();List<ClubDb.Member> ms=db.searchMembers(q);for(ClubDb.Member m:ms){LinearLayout p=panel();p.addView(text(m.fullName+" • "+m.code,18,true));p.addView(small((m.position==null?"":m.position)+" • "+(m.department==null?"":m.department)+"\nĐiểm: "+m.totalPoints+" • Trạng thái: "+m.status));p.setOnClickListener(v->memberDetail(m.id));box.addView(p);}if(ms.isEmpty())box.addView(small("Không tìm thấy hội viên."));}
+    private void memberDetail(long id){ClubDb.Member m=db.getMember(id);if(m==null){members();return;}base("HỒ SƠ HỘI VIÊN",m.code);LinearLayout p=panel();p.addView(text(m.fullName,22,true));p.addView(text("Chức danh: "+safe(m.position)+"\nBan: "+safe(m.department)+"\nĐiện thoại: "+safe(m.phone)+"\nEmail: "+safe(m.email)+"\nNgày tham gia: "+safe(m.joinedAt)+"\nTrạng thái: "+m.status+"\nTổng điểm: "+m.totalPoints,15,false));root.addView(p);if(isMod())root.addView(btn("Sửa hồ sơ",v->memberForm(m)));root.addView(outlineBtn("← Danh sách hội viên",v->members()));}
+    private void memberForm(ClubDb.Member m){base(m==null?"THÊM HỘI VIÊN":"SỬA HỘI VIÊN","Quản lý hồ sơ");LinearLayout p=panel();EditText code=input("Mã hội viên");EditText name=input("Họ tên");EditText phone=input("Điện thoại");EditText email=input("Email");EditText pos=input("Chức danh");EditText dept=input("Ban / bộ phận");EditText status=input("Trạng thái: ACTIVE/INACTIVE");if(m!=null){code.setText(m.code);code.setEnabled(false);name.setText(m.fullName);phone.setText(safe(m.phone));email.setText(safe(m.email));pos.setText(safe(m.position));dept.setText(safe(m.department));status.setText(m.status);}else status.setText("ACTIVE");p.addView(code);p.addView(name);p.addView(phone);p.addView(email);p.addView(pos);p.addView(dept);p.addView(status);p.addView(btn("Lưu",v->{boolean ok;if(m==null)ok=db.addMember(code.getText().toString(),name.getText().toString(),phone.getText().toString(),email.getText().toString(),pos.getText().toString(),dept.getText().toString(),user.username)>0;else ok=db.updateMember(m.id,name.getText().toString(),phone.getText().toString(),email.getText().toString(),pos.getText().toString(),dept.getText().toString(),status.getText().toString().trim().toUpperCase(),user.username);toast(ok?"Đã lưu":"Không thể lưu. Kiểm tra mã hội viên hoặc dữ liệu.");if(ok)members();}));root.addView(p);root.addView(outlineBtn("← Quay lại",v->members()));}
 
-    private TextView small(String s) {
-        TextView v = text(s,13,false);
-        v.setTextColor(MUTED);
-        return v;
-    }
+    private void activities(){base("HOẠT ĐỘNG CLB","Sinh hoạt • Chuyên môn • Cộng đồng");if(isMod())root.addView(btn("+ Tạo hoạt động",v->activityForm()));for(ClubDb.ActivityItem a:db.listActivities()){LinearLayout p=panel();TextView d=small(a.date+" • "+a.category+" • "+a.status);d.setTextColor(GOLD);p.addView(d);p.addView(text(a.title,18,true));p.addView(text(safe(a.description),15,false));p.addView(small("Điểm mặc định: +"+a.points));if(isMod())p.addView(outlineBtn("Ghi nhận điểm hội viên",v->awardPoints(a)));root.addView(p);}root.addView(outlineBtn("← Trang chủ",v->showHome()));}
+    private void activityForm(){base("TẠO HOẠT ĐỘNG","MOD / ADMIN");LinearLayout p=panel();EditText title=input("Tên hoạt động");EditText cat=input("Loại hoạt động");EditText date=input("Ngày dd/MM/yyyy");EditText pts=input("Điểm mặc định");pts.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED);EditText desc=input("Mô tả");p.addView(title);p.addView(cat);p.addView(date);p.addView(pts);p.addView(desc);p.addView(btn("Lưu hoạt động",v->{int n=parseInt(pts.getText().toString());long id=db.addActivity(title.getText().toString(),cat.getText().toString(),date.getText().toString(),n,desc.getText().toString(),user.username);toast(id>0?"Đã tạo hoạt động":"Không thể tạo");if(id>0)activities();}));root.addView(p);root.addView(outlineBtn("← Hoạt động",v->activities()));}
+    private void awardPoints(ClubDb.ActivityItem a){base("GHI NHẬN ĐIỂM",a.title);LinearLayout p=panel();EditText member=input("Mã hoặc tên hội viên");EditText pts=input("Điểm");pts.setText(String.valueOf(a.points));pts.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED);EditText note=input("Ghi chú");p.addView(member);p.addView(pts);p.addView(note);p.addView(btn("Ghi nhận",v->{List<ClubDb.Member> ms=db.searchMembers(member.getText().toString());if(ms.size()!=1){toast("Cần nhập đủ để xác định đúng 1 hội viên");return;}boolean ok=db.awardPoints(a.id,ms.get(0).id,parseInt(pts.getText().toString()),note.getText().toString(),user.username);toast(ok?"Đã ghi nhận điểm":"Không thể ghi nhận; có thể hội viên đã được chấm cho hoạt động này");if(ok)activities();}));root.addView(p);root.addView(outlineBtn("← Hoạt động",v->activities()));}
 
-    private Space gap(int h) {
-        Space s = new Space(this);
-        s.setLayoutParams(new LinearLayout.LayoutParams(1,h));
-        return s;
-    }
+    private void points(){base("ĐIỂM & KHEN THƯỞNG","Ghi nhận đóng góp hội viên");long mid="MEMBER".equals(user.role)?user.memberId:0;if(mid==0){EditText q=input("Nhập mã/tên hội viên");root.addView(q);root.addView(btn("Xem",v->{List<ClubDb.Member> ms=db.searchMembers(q.getText().toString());if(ms.size()==1)pointsFor(ms.get(0));else toast("Cần xác định đúng 1 hội viên");}));}else{ClubDb.Member m=db.getMember(mid);if(m!=null)pointsFor(m);}root.addView(outlineBtn("← Trang chủ",v->showHome()));}
+    private void pointsFor(ClubDb.Member m){LinearLayout p=panel();p.addView(text(m.fullName+" • "+m.code,20,true));TextView n=text(String.valueOf(m.totalPoints),34,true);n.setTextColor(GOLD);n.setGravity(Gravity.CENTER_HORIZONTAL);p.addView(n);p.addView(small("TỔNG ĐIỂM HOẠT ĐỘNG"));for(String h:db.pointHistory(m.id))p.addView(text("• "+h,14,false));root.addView(p);root.addView(section("Khen thưởng"));for(ClubDb.RewardItem r:db.rewards(m.id)){LinearLayout x=panel();x.addView(text("🏅 "+r.title,17,true));x.addView(small(r.date+"\n"+r.note));root.addView(x);}if(isMod())root.addView(outlineBtn("+ Thêm khen thưởng",v->rewardForm(m)));}
+    private void rewardForm(ClubDb.Member m){base("THÊM KHEN THƯỞNG",m.fullName);LinearLayout p=panel();EditText title=input("Tên khen thưởng");EditText note=input("Ghi chú");p.addView(title);p.addView(note);p.addView(btn("Lưu",v->{long id=db.addReward(m.id,title.getText().toString(),note.getText().toString(),user.username);toast(id>0?"Đã lưu":"Không thể lưu");if(id>0)points();}));root.addView(p);root.addView(outlineBtn("← Điểm & khen thưởng",v->points()));}
 
-    private Button btn(String label, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextSize(16);
-        b.setTextColor(Color.WHITE);
-        b.setAllCaps(false);
-        b.setTypeface(Typeface.SERIF, Typeface.BOLD);
-        b.setPadding(18,14,18,14);
-        b.setBackground(bg(GREEN,28));
-        b.setOnClickListener(l);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2);
-        p.setMargins(0,7,0,7);
-        b.setLayoutParams(p);
-        return b;
-    }
+    private void news(){base("TIN TỨC CLB","Thông báo • Kiến thức • Hoạt động");if(isMod())root.addView(btn("+ Đăng tin",v->newsForm()));for(ClubDb.NewsItem n:db.listNews()){LinearLayout p=panel();TextView d=small(n.date+" • "+n.author);d.setTextColor(GOLD);p.addView(d);p.addView(text(n.title,18,true));p.addView(text(n.body,15,false));root.addView(p);}root.addView(outlineBtn("← Trang chủ",v->showHome()));}
+    private void newsForm(){base("ĐĂNG TIN","MOD / ADMIN");LinearLayout p=panel();EditText title=input("Tiêu đề");EditText body=input("Nội dung");body.setSingleLine(false);body.setMinLines(5);p.addView(title);p.addView(body);p.addView(btn("Đăng",v->{long id=db.addNews(title.getText().toString(),body.getText().toString(),user.username);toast(id>0?"Đã đăng":"Không thể đăng");if(id>0)news();}));root.addView(p);root.addView(outlineBtn("← Tin tức",v->news()));}
 
-    private Button outlineBtn(String label, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setTextSize(15);
-        b.setTextColor(GREEN_DARK);
-        b.setAllCaps(false);
-        GradientDrawable g=bg(PAPER,28); g.setStroke(2,GOLD); b.setBackground(g);
-        b.setOnClickListener(l);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2);
-        p.setMargins(0,6,0,6); b.setLayoutParams(p);
-        return b;
-    }
+    private void admin(){if(!isMod()){showHome();return;}base("QUẢN TRỊ","Công cụ vận hành và dữ liệu");root.addView(btn("📥 Nhập hội viên CSV",v->pickCsv()));if(isAdmin()){root.addView(btn("👑 Tài khoản & phân quyền",v->accountAdmin()));root.addView(btn("💾 Sao lưu dữ liệu",v->exportBackup()));root.addView(btn("♻ Khôi phục dữ liệu",v->importBackup()));root.addView(btn("🧾 Nhật ký hệ thống",v->audit()));}root.addView(outlineBtn("← Trang chủ",v->showHome()));}
+    private void accountAdmin(){base("TÀI KHOẢN & PHÂN QUYỀN","Chỉ ADMIN");LinearLayout p=panel();EditText name=input("Username");EditText pass=input("Mật khẩu mới (>=8 ký tự)");pass.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);EditText role=input("Role: ADMIN / MOD / MEMBER");EditText member=input("Mã/tên hội viên gắn tài khoản");p.addView(name);p.addView(pass);p.addView(role);p.addView(member);p.addView(btn("Tạo / cập nhật tài khoản",v->{List<ClubDb.Member> ms=db.searchMembers(member.getText().toString());long mid=ms.size()==1?ms.get(0).id:0;String r=role.getText().toString().trim().toUpperCase();if(!r.equals("ADMIN")&&!r.equals("MOD")&&!r.equals("MEMBER")){toast("Role không hợp lệ");return;}boolean ok=db.createOrUpdateUser(name.getText().toString(),pass.getText().toString(),r,mid,user.username);toast(ok?"Đã cập nhật tài khoản":"Không thể cập nhật");}));root.addView(p);root.addView(outlineBtn("← Quản trị",v->admin()));}
+    private void audit(){base("NHẬT KÝ HỆ THỐNG","100 thao tác gần nhất");for(ClubDb.AuditItem a:db.audit()){LinearLayout p=panel();p.addView(text(a.action,16,true));p.addView(small(a.date+" • "+a.actor+"\n"+a.detail));root.addView(p);}root.addView(outlineBtn("← Quản trị",v->admin()));}
 
-    private void base(String title, String subtitle) {
-        ScrollView sv = new ScrollView(this);
-        sv.setBackgroundColor(CREAM);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(24,22,24,46);
-        sv.addView(root);
+    private void changePassword(){base("ĐỔI MẬT KHẨU","Bảo vệ tài khoản");LinearLayout p=panel();EditText old=input("Mật khẩu hiện tại");old.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);EditText n=input("Mật khẩu mới (>=8 ký tự)");n.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);EditText c=input("Nhập lại mật khẩu mới");c.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);p.addView(old);p.addView(n);p.addView(c);p.addView(btn("Đổi mật khẩu",v->{if(!n.getText().toString().equals(c.getText().toString())){toast("Mật khẩu nhập lại không khớp");return;}boolean ok=db.changePassword(user.username,old.getText().toString(),n.getText().toString());toast(ok?"Đã đổi mật khẩu":"Không thể đổi mật khẩu");if(ok)showHome();}));root.addView(p);root.addView(outlineBtn("← Trang chủ",v->showHome()));}
 
-        LinearLayout hero = new LinearLayout(this);
-        hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(22,20,22,20);
-        GradientDrawable heroBg = bg(GREEN_DARK,34);
-        heroBg.setStroke(2, GOLD);
-        hero.setBackground(heroBg);
+    private void pickCsv(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("text/*");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,REQ_MEMBER_CSV);}
+    private void exportBackup(){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("application/json");i.putExtra(Intent.EXTRA_TITLE,"yhct-backup-"+System.currentTimeMillis()+".json");startActivityForResult(i,REQ_BACKUP_EXPORT);}
+    private void importBackup(){new AlertDialog.Builder(this).setTitle("Khôi phục dữ liệu").setMessage("Dữ liệu hiện tại sẽ được thay thế bởi bản sao lưu. Chỉ tiếp tục khi bạn chắc chắn.").setNegativeButton("Hủy",null).setPositiveButton("Chọn tệp",(d,w)->{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/json");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,REQ_BACKUP_IMPORT);}).show();}
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){super.onActivityResult(requestCode,resultCode,data);if(resultCode!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();try{if(requestCode==REQ_BACKUP_EXPORT){OutputStream out=getContentResolver().openOutputStream(uri);out.write(db.exportJson().toString(2).getBytes(StandardCharsets.UTF_8));out.close();db.log(user.username,"BACKUP_EXPORT","Xuất sao lưu");toast("Đã sao lưu dữ liệu");}else if(requestCode==REQ_BACKUP_IMPORT){String s=readUri(uri);db.importBackup(new JSONObject(s),user.username);toast("Khôi phục thành công. Vui lòng đăng nhập lại.");user=null;showLogin();}else if(requestCode==REQ_MEMBER_CSV){int n=db.importMembersCsv(readUri(uri),user.username);toast("Đã nhập "+n+" hội viên");members();}}catch(Exception e){toast("Lỗi xử lý tệp: "+e.getMessage());}}
+    private String readUri(Uri uri)throws Exception{InputStream in=getContentResolver().openInputStream(uri);ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];int n;while((n=in.read(b))>0)out.write(b,0,n);in.close();return out.toString("UTF-8");}
 
-        TextView crest = new TextView(this);
-        crest.setText("☯  藥  YHCT");
-        crest.setTextColor(Color.rgb(235,214,163));
-        crest.setTextSize(17);
-        crest.setGravity(Gravity.CENTER_HORIZONTAL);
-        crest.setTypeface(Typeface.SERIF, Typeface.BOLD);
-        hero.addView(crest);
-
-        TextView h = new TextView(this);
-        h.setText(title);
-        h.setTextColor(Color.WHITE);
-        h.setTextSize(25);
-        h.setGravity(Gravity.CENTER_HORIZONTAL);
-        h.setTypeface(Typeface.SERIF, Typeface.BOLD);
-        h.setPadding(0,8,0,2);
-        hero.addView(h);
-
-        TextView sub = new TextView(this);
-        sub.setText(subtitle);
-        sub.setTextColor(Color.rgb(236,226,198));
-        sub.setTextSize(14);
-        sub.setGravity(Gravity.CENTER_HORIZONTAL);
-        sub.setTypeface(Typeface.SERIF, Typeface.NORMAL);
-        hero.addView(sub);
-
-        root.addView(hero);
-        root.addView(gap(16));
-    }
-
-    private LinearLayout panel() {
-        LinearLayout p = new LinearLayout(this);
-        p.setOrientation(LinearLayout.VERTICAL);
-        p.setPadding(18,16,18,16);
-        GradientDrawable g=bg(PAPER,26); g.setStroke(1,Color.rgb(220,207,173)); p.setBackground(g);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2); lp.setMargins(0,6,0,8); p.setLayoutParams(lp);
-        return p;
-    }
-
-    private TextView section(String s) {
-        TextView v=text(s,19,true); v.setTextColor(BROWN); v.setPadding(4,14,4,7); return v;
-    }
-
-    private LinearLayout stat(String value, String label) {
-        LinearLayout p=panel();
-        TextView a=text(value,24,true); a.setTextColor(GREEN_DARK); a.setGravity(Gravity.CENTER_HORIZONTAL);
-        TextView b=small(label); b.setGravity(Gravity.CENTER_HORIZONTAL);
-        p.addView(a); p.addView(b); return p;
-    }
-
-    private void showHome() {
-        base("CLB Y HỌC CỔ TRUYỀN", "Gìn giữ tinh hoa • Kết nối hội viên • Phụng sự cộng đồng");
-
-        LinearLayout quote=panel();
-        TextView q=text("“Dưỡng sinh quý ở điều hòa, hành y quý ở nhân tâm.”",17,true); q.setTextColor(GOLD); q.setGravity(Gravity.CENTER_HORIZONTAL);
-        quote.addView(q);
-        quote.addView(small("Ứng dụng quản lý hội viên • Phiên bản 2.0"));
-        root.addView(quote);
-
-        root.addView(section("Tổng quan câu lạc bộ"));
-        LinearLayout stats=new LinearLayout(this); stats.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout a=stat("200","Hội viên"), b=stat("12","Hoạt động"), c=stat("145","Điểm mẫu");
-        stats.addView(a,new LinearLayout.LayoutParams(0,-2,1));
-        stats.addView(b,new LinearLayout.LayoutParams(0,-2,1));
-        stats.addView(c,new LinearLayout.LayoutParams(0,-2,1));
-        root.addView(stats);
-
-        root.addView(section("Vai trò truy cập"));
-        Spinner s=new Spinner(this);
-        String[] roles={"MEMBER","MOD","ADMIN"};
-        ArrayAdapter<String> ad=new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,roles);
-        s.setAdapter(ad); s.setSelection(role.equals("ADMIN")?2:role.equals("MOD")?1:0);
-        s.setBackground(bg(PAPER,20)); s.setPadding(12,10,12,10);
-        s.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
-            public void onItemSelected(AdapterView<?> p,View v,int pos,long id){role=roles[pos];}
-            public void onNothingSelected(AdapterView<?> p){}
-        }); root.addView(s);
-
-        root.addView(section("Danh mục"));
-        root.addView(btn("👤  Tra cứu thành viên",v->memberLookup()));
-        root.addView(btn("🌿  Hoạt động câu lạc bộ",v->activities()));
-        root.addView(btn("🏅  Điểm & khen thưởng",v->points()));
-        root.addView(btn("📜  Tin tức & thông báo",v->news()));
-        root.addView(outlineBtn("⚙  Khu vực quản trị",v->admin()));
-
-        root.addView(section("Tôn chỉ"));
-        LinearLayout mission=panel();
-        mission.addView(text("Kết nối người làm và yêu thích Y học cổ truyền; khuyến khích học tập, chia sẻ chuyên môn, dưỡng sinh và hoạt động cộng đồng trên nền tảng minh bạch, nhân văn.",16,false));
-        root.addView(mission);
-    }
-
-    private void memberLookup(){
-        base("TRA CỨU HỘI VIÊN", "Hồ sơ • Chức danh • Điểm hoạt động");
-        LinearLayout box=panel();
-        box.addView(text("Thông tin tra cứu",18,true));
-        EditText q=new EditText(this); q.setHint("Nhập mã hội viên hoặc họ tên"); q.setInputType(InputType.TYPE_CLASS_TEXT); q.setSingleLine(true); box.addView(q);
-        TextView out=text("",16,false);
-        box.addView(btn("Tra cứu",v->{
-            String x=q.getText().toString().trim();
-            if(x.isEmpty()) out.setText("Vui lòng nhập thông tin tra cứu.");
-            else out.setText("NGUYỄN VĂN AN\nMã hội viên: TV001\nChức danh: Hội viên\nBan: Chuyên môn\nTổng điểm: 145\nXếp loại: Tích cực\n\nHuy hiệu: 🌿 Hội viên tích cực");
-        })); box.addView(out); root.addView(box);
-        root.addView(outlineBtn("← Về trang chủ",v->showHome()));
-    }
-
-    private void activities(){
-        base("HOẠT ĐỘNG CLB", "Sinh hoạt • Chuyên môn • Cộng đồng");
-        root.addView(section("Sắp diễn ra"));
-        root.addView(activityCard("15/09/2026","Dưỡng sinh & điều tức","Sinh hoạt chuyên đề", "+10 điểm"));
-        root.addView(activityCard("28/09/2026","Khám tư vấn sức khỏe cộng đồng","Thiện nguyện", "+20 điểm"));
-        root.addView(activityCard("12/10/2026","Nhận biết và sử dụng dược liệu","Tập huấn", "+15 điểm"));
-        if(role.equals("ADMIN")||role.equals("MOD")) root.addView(btn("+ Ghi nhận hoạt động",v->toast("Quyền MOD/ADMIN đã được mở ở bản V2 pilot.")));
-        root.addView(outlineBtn("← Về trang chủ",v->showHome()));
-    }
-
-    private LinearLayout activityCard(String date,String title,String type,String score){
-        LinearLayout l=panel();
-        TextView d=text(date,13,true); d.setTextColor(GOLD); l.addView(d);
-        TextView t=text(title,18,true); t.setTextColor(GREEN_DARK); l.addView(t);
-        l.addView(small(type+"  •  "+score));
-        return l;
-    }
-
-    private void points(){
-        base("ĐIỂM & KHEN THƯỞNG", "Ghi nhận đóng góp của hội viên");
-        LinearLayout badge=panel();
-        TextView name=text("NGUYỄN VĂN AN • TV001",18,true); name.setGravity(Gravity.CENTER_HORIZONTAL); badge.addView(name);
-        TextView num=text("145",34,true); num.setTextColor(GOLD); num.setGravity(Gravity.CENTER_HORIZONTAL); badge.addView(num);
-        TextView label=small("TỔNG ĐIỂM HOẠT ĐỘNG"); label.setGravity(Gravity.CENTER_HORIZONTAL); badge.addView(label);
-        badge.addView(text("🌿  Hội viên tích cực quý III/2026",17,true)); root.addView(badge);
-
-        root.addView(section("Lịch sử ghi nhận"));
-        root.addView(activityCard("+10","Sinh hoạt chuyên đề","Dưỡng sinh","15/08/2026"));
-        root.addView(activityCard("+20","Khám tư vấn cộng đồng","Thiện nguyện","28/08/2026"));
-        root.addView(activityCard("+15","Tập huấn dược liệu","Chuyên môn","30/08/2026"));
-        root.addView(outlineBtn("← Về trang chủ",v->showHome()));
-    }
-
-    private void news(){
-        base("TIN TỨC CLB", "Thông báo • Kiến thức • Hoạt động");
-        root.addView(newsCard("01/09/2026","Ra mắt ứng dụng quản lý hội viên V2","Giao diện mới mang tinh thần Y học cổ truyền, hướng đến sử dụng đơn giản và trực quan."));
-        root.addView(newsCard("25/08/2026","Chuẩn bị chương trình sức khỏe cộng đồng","CLB chuẩn bị hoạt động tư vấn sức khỏe và dưỡng sinh trong tháng 9."));
-        root.addView(outlineBtn("← Về trang chủ",v->showHome()));
-    }
-
-    private LinearLayout newsCard(String date,String title,String body){
-        LinearLayout l=panel(); TextView d=small(date); d.setTextColor(GOLD); l.addView(d); l.addView(text(title,18,true)); l.addView(text(body,15,false)); return l;
-    }
-
-    private void admin(){
-        base("KHU VỰC QUẢN TRỊ", "Phân quyền theo vai trò");
-        if(role.equals("MEMBER")){
-            LinearLayout warn=panel(); warn.addView(text("🔒 Quyền truy cập hạn chế",19,true)); warn.addView(text("Tài khoản MEMBER chỉ được xem dữ liệu cá nhân và nội dung công khai. Vui lòng chuyển sang MOD hoặc ADMIN trong chế độ mô phỏng để xem khu vực quản trị.",15,false)); root.addView(warn);
-        } else {
-            LinearLayout identity=panel(); identity.addView(text("Đang truy cập với vai trò: "+role,18,true)); identity.addView(small(role.equals("ADMIN")?"Toàn quyền hệ thống":"Quản lý nghiệp vụ được phân công")); root.addView(identity);
-            root.addView(btn("👥 Quản lý thành viên",v->toast("Danh sách thành viên - V2 demo")));
-            root.addView(btn("📝 Chấm điểm hoạt động",v->toast("Biểu mẫu chấm điểm - V2 demo")));
-            if(role.equals("ADMIN")){
-                root.addView(btn("🎖 Bổ nhiệm MOD / chức danh",v->toast("Chức năng ADMIN - V2 demo")));
-                root.addView(btn("⚙ Cấu hình hệ thống",v->toast("Cấu hình hệ thống - V2 demo")));
-            }
-        }
-        root.addView(outlineBtn("← Về trang chủ",v->showHome()));
-    }
-
-    private void toast(String s){ Toast.makeText(this,s,Toast.LENGTH_SHORT).show(); }
+    private String safe(String s){return s==null?"":s;} private int parseInt(String s){try{return Integer.parseInt(s.trim());}catch(Exception e){return 0;}} private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
 }
